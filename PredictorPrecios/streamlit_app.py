@@ -378,6 +378,14 @@ def main():
         value=False,
         help="Usa valores promedio del barrio para predecir rápidamente"
     )
+
+    prop_nueva = st.sidebar.checkbox(
+        "Propiedades a Estrenar", 
+        value=False,
+        help="Se consideran propiedades a estrenar",
+        disabled=not modo_simplificado
+    )
+
     st.sidebar.markdown('</div>', unsafe_allow_html=True)
     
     # Obtener valores únicos para los selectores
@@ -395,7 +403,12 @@ def main():
         ambientes = st.sidebar.slider("🛋️ Ambientes", 1, 6, 3)
         
         # Obtener valores promedio para el barrio
-        promedios = obtener_valores_promedio_barrio(df, barrio)
+        ### promedios = obtener_valores_promedio_barrio(df, barrio)
+        df_filtrado = df.copy()
+        if prop_nueva:
+            df_filtrado = df_filtrado[(df_filtrado['antiquity'].fillna(0) == 0)]
+
+        promedios = obtener_valores_promedio_barrio(df_filtrado, barrio)
         
         # Mostrar información sobre los valores utilizados
         with st.sidebar.expander("ℹ️ Valores utilizados automáticamente"):
@@ -469,7 +482,11 @@ def main():
                 st.markdown("---")
                 st.header("📊 Análisis Rápido")
                 
-                fig_dist = crear_grafico_distribucion_precios(df, {'barrio': barrio, 'room': ambientes})
+                #### fig_dist = crear_grafico_distribucion_precios(df, {'barrio': barrio, 'room': ambientes})
+                df_grafico = df_filtrado if prop_nueva else df
+                fig_dist = crear_grafico_distribucion_precios(df_grafico, {'barrio': barrio, 'room': ambientes})
+
+
                 fig_dist.add_vline(x=precio_predicho, line_dash="dash", line_color="red", 
                                  annotation_text="Tu Predicción")
                 st.plotly_chart(fig_dist, use_container_width=True)
