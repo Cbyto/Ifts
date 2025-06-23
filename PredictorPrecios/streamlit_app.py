@@ -376,14 +376,21 @@ def main():
     modo_simplificado = st.sidebar.checkbox(
         "Activar Predicción Rápida", 
         value=False,
-        help="Usa valores promedio del barrio para predecir rápidamente"
+        help="Usa valores promedio del barrio para predecir rápidamente",
+        key="modo_simplificado"
     )
 
+    # Forzar desactivación si se apaga el modo simplificado
+    if not st.session_state.modo_simplificado:
+        st.session_state.prop_nueva = False
+
+    # Checkbox controlado por clave
     prop_nueva = st.sidebar.checkbox(
         "Propiedades a Estrenar", 
         value=False,
         help="Se consideran propiedades a estrenar",
-        disabled=not modo_simplificado
+        disabled=not st.session_state.modo_simplificado,
+        key="prop_nueva"
     )
 
     st.sidebar.markdown('</div>', unsafe_allow_html=True)
