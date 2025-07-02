@@ -348,6 +348,10 @@ def crear_grafico_comparativo(df, caracteristica, precio_predicho=None):
     return fig
 
 def main():
+
+    if 'prediccion_rapida_hecha' not in st.session_state:
+        st.session_state.prediccion_rapida_hecha = False
+
     # Título principal
     st.markdown('<h1 class="main-header">🏠 Predictor de Precios Inmobiliarios</h1>', unsafe_allow_html=True)
     
@@ -380,6 +384,11 @@ def main():
         key="modo_simplificado"
     )
 
+    # Resetear todo si se desactiva
+    if not st.session_state.modo_simplificado:
+        st.session_state.prop_nueva = False
+        st.session_state.prediccion_rapida_hecha = False
+
     # Forzar desactivación si se apaga el modo simplificado
     if not st.session_state.modo_simplificado:
         st.session_state.prop_nueva = False
@@ -410,12 +419,21 @@ def main():
         ambientes = st.sidebar.slider("🛋️ Ambientes", 1, 6, 3)
         
         # Obtener valores promedio para el barrio
-        ### promedios = obtener_valores_promedio_barrio(df, barrio)
         df_filtrado = df.copy()
         if prop_nueva:
             df_filtrado = df_filtrado[(df_filtrado['antiquity'].fillna(0) == 0)]
+        
+        # Ver el nro de propiedades nuevas por barrio
+        if prop_nueva:
+            cantidad_nuevas = df_filtrado[
+                (df_filtrado['barrio'] == barrio) & 
+                (df_filtrado['room'] == ambientes)].shape[0]
+            st.sidebar.markdown(f"🔍 <span style='color:#667eea'><strong>{cantidad_nuevas} propiedades nuevas</strong></span> encontradas en {barrio}", unsafe_allow_html=True)
 
         promedios = obtener_valores_promedio_barrio(df_filtrado, barrio)
+
+        if prop_nueva:
+            promedios['antiquity'] = 0
         
         # Mostrar información sobre los valores utilizados
         with st.sidebar.expander("ℹ️ Valores utilizados automáticamente"):
@@ -445,20 +463,22 @@ def main():
                     garage=promedios['garage'],
                     expenses=promedios['expenses']
                 )
-                
+                st.session_state.prediccion_rapida_hecha = True
+
+                if st.session_state.prediccion_rapida_hecha:
                 # Mostrar resultado con estilo diferente
-                st.markdown(f"""
-                <div class="simple-price-card">
-                    <h2>⚡ Predicción Rápida</h2>
-                    <h1>${precio_predicho:,.0f} USD</h1>
-                    <p><strong>{barrio} • {ambientes} ambientes</strong></p>
-                    <p>Precio por m²: ${precio_predicho/promedios['m2_total']:,.0f} USD/m²</p>
-                    <small>*Basado en características promedio del barrio*</small>
-                </div>
-                """, unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <div class="simple-price-card">
+                        <h2>⚡ Predicción Rápida</h2>
+                        <h1>${precio_predicho:,.0f} USD</h1>
+                        <p><strong>{barrio} • {ambientes} ambientes</strong></p>
+                        <p>Precio por m²: ${precio_predicho/promedios['m2_total']:,.0f} USD/m²</p>
+                        <small>*Basado en características promedio del barrio*</small>
+                    </div>
+                    """, unsafe_allow_html=True)
                 
                 # Métricas comparativas simplificadas
-                col1, col2, col3 = st.columns(3)
+                col1, col2, col3, col4 = st.columns(4)
                 
                 df_barrio = df[df['barrio'] == barrio]
                 precio_promedio_barrio = df_barrio['price'].mean()
@@ -478,12 +498,23 @@ def main():
                         f"{((precio_predicho - precio_promedio_general) / precio_promedio_general * 100):+.1f}%"
                     )
                 
+                #with col3:
+                #    propiedades_similares = len(df[
+                #        (df['barrio'] == barrio) & 
+                #        (df['room'] == ambientes)
+                #    ])
+                #    st.metric("Propiedades Similares", propiedades_similares)
+
+                # Agregado de KPI, cuantas propiedades similares son nuevas
+                df_similares = df[(df['barrio'] == barrio) & (df['room'] == ambientes)]
+                propiedades_similares = len(df_similares)
+                propiedades_nuevas_similares = len(df_similares[df_similares['antiquity'].fillna(0) == 0])
+
                 with col3:
-                    propiedades_similares = len(df[
-                        (df['barrio'] == barrio) & 
-                        (df['room'] == ambientes)
-                    ])
                     st.metric("Propiedades Similares", propiedades_similares)
+
+                with col4:
+                    st.metric("Similares a Estrenar", propiedades_nuevas_similares)
                 
                 # Gráfico simplificado
                 st.markdown("---")
@@ -493,11 +524,27 @@ def main():
                 df_grafico = df_filtrado if prop_nueva else df
                 fig_dist = crear_grafico_distribucion_precios(df_grafico, {'barrio': barrio, 'room': ambientes})
 
-
                 fig_dist.add_vline(x=precio_predicho, line_dash="dash", line_color="red", 
                                  annotation_text="Tu Predicción")
                 st.plotly_chart(fig_dist, use_container_width=True)
+
                 
+                # Gráfico: comparación de precios entre nuevas y usadas
+                df_barrio = df[df['barrio'] == barrio].copy()
+                df_barrio['nueva'] = np.where(df_barrio['antiquity'].fillna(0) == 0, 'A Estrenar', 'Usada')
+                
+                if df_barrio['price'].notna().sum() > 0:
+                    fig_comp = px.box(
+                        df_barrio,
+                        x='nueva',
+                        y='price',
+                        color='nueva',
+                        title='💰 Comparación de precios: Nuevas vs Usadas',
+                        labels={'price': 'Precio (USD)', 'nueva': ''},
+                        color_discrete_map={'A Estrenar': '#4CAF50', 'Usada': '#667eea'}
+                    )
+                    st.plotly_chart(fig_comp, use_container_width=True)
+
                 # Sugerencia para predicción detallada
                 st.info("💡 **Tip:** Desactiva 'Predicción Rápida' arriba para obtener una estimación más precisa con todos los parámetros.")
                 
