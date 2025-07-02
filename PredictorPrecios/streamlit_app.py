@@ -97,7 +97,7 @@ def obtener_valores_promedio_barrio(df, barrio):
         # Si no hay datos del barrio, usar promedios generales
         df_barrio = df
 
-# Función auxiliar para obtener valores seguros
+    # Función auxiliar para obtener valores seguros
     def safe_int(series, default=0):
         """Convierte a entero de forma segura, manejando NaN"""
         try:
@@ -348,7 +348,6 @@ def crear_grafico_comparativo(df, caracteristica, precio_predicho=None):
     return fig
 
 def main():
-
     if 'prediccion_rapida_hecha' not in st.session_state:
         st.session_state.prediccion_rapida_hecha = False
 
@@ -377,20 +376,26 @@ def main():
     </div>
     ''', unsafe_allow_html=True)    
 
-    modo_simplificado = st.sidebar.checkbox(
-        "Activar Predicción Rápida", 
-        value=False,
-        help="Usa valores promedio del barrio para predecir rápidamente",
-        key="modo_simplificado"
+    # Selector exclusivo de modo
+    modo_prediccion = st.sidebar.radio(
+        "🎯 Modo de Predicción",
+        options=["General", "Predicción Rápida", "Predicción Simple"],
+        help="Elegí un modo de predicción. Podés usar uno simplificado o configurar todos los parámetros."
     )
 
-    # Resetear todo si se desactiva
-    if not st.session_state.modo_simplificado:
+    modo_simplificado = modo_prediccion == "Predicción Rápida"
+    modo_simple_rango = modo_prediccion == "Predicción Simple"
+    modo_general = modo_prediccion == "General"
+
+
+    # Resetear estados si NO estamos en predicción rápida
+    if not modo_simplificado:
         st.session_state.prop_nueva = False
         st.session_state.prediccion_rapida_hecha = False
 
+
     # Forzar desactivación si se apaga el modo simplificado
-    if not st.session_state.modo_simplificado:
+    if not modo_simplificado:
         st.session_state.prop_nueva = False
 
     # Checkbox controlado por clave
@@ -398,7 +403,7 @@ def main():
         "Propiedades a Estrenar", 
         value=False,
         help="Se consideran propiedades a estrenar",
-        disabled=not st.session_state.modo_simplificado,
+        disabled=not modo_simplificado,
         key="prop_nueva"
     )
 
@@ -527,8 +532,6 @@ def main():
                 fig_dist.add_vline(x=precio_predicho, line_dash="dash", line_color="red", 
                                  annotation_text="Tu Predicción")
                 st.plotly_chart(fig_dist, use_container_width=True)
-
-                
                 # Gráfico: comparación de precios entre nuevas y usadas
                 df_barrio = df[df['barrio'] == barrio].copy()
                 df_barrio['nueva'] = np.where(df_barrio['antiquity'].fillna(0) == 0, 'A Estrenar', 'Usada')
@@ -550,8 +553,53 @@ def main():
                 
             except Exception as e:
                 st.error(f"Error en la predicción: {str(e)}")
-    
-    else:
+                
+    # - MODO SIMPLE CON RANGO -#
+    if modo_simple_rango:
+        st.sidebar.header("🔎 Predicción por Rango de M²")
+        barrio = st.sidebar.selectbox("📍 Barrio", barrios_disponibles, index=0, key="simple_barrio")
+        tipo = st.sidebar.selectbox("🏢 Tipo", tipos_disponibles, index=0, key="simple_tipo")
+        ambientes = st.sidebar.slider("🛋️ Ambientes", 1, 6, 3, key="simple_ambientes")
+        m2_rango = st.sidebar.slider("📏 Rango de M² Totales", 20, 300, (35, 45))
+
+        df_filtrado = df[
+            (df['barrio'] == barrio) &
+            (df['type'] == tipo) &
+            (df['room'] == ambientes) &
+            (df['m2_total'] >= m2_rango[0]) &
+            (df['m2_total'] <= m2_rango[1])
+        ]
+
+        if len(df_filtrado) == 0:
+            st.warning("No se encontraron propiedades con esos criterios.")
+        else:
+            valores = df_filtrado.median(numeric_only=True).fillna(0).to_dict()
+            valores.update({'barrio': barrio, 'type': tipo, 'room': ambientes})
+            precio = predictor.predecir_single(
+                barrio=barrio,
+                type=tipo,
+                disposition=valores.get('disposition', 'Frente'),
+                orientation=valores.get('orientation', 'Norte'),
+                m2_total=valores['m2_total'],
+                m2_covered=valores.get('m2_covered', valores['m2_total'] * 0.9),
+                room=ambientes,
+                bedroom=int(valores.get('bedroom', 2)),
+                bathroom=int(valores.get('bathroom', 1)),
+                toilette=int(valores.get('toilette', 0)),
+                antiquity=int(valores.get('antiquity', 20)),
+                garage=int(valores.get('garage', 0)),
+                expenses=int(valores.get('expenses', 100))
+            )
+
+            st.markdown(f"""
+            <div class="simple-price-card">
+                <h2>🔎 Predicción por Rango</h2>
+                <h1>${precio:,.0f} USD</h1>
+                <p><strong>{barrio} • {tipo} • {ambientes} ambientes • {m2_rango[0]}–{m2_rango[1]} m²</strong></p>
+                <small>*Estimación basada en propiedades reales con esas características*</small>
+            </div>
+            """, unsafe_allow_html=True)
+    if modo_general:
         # MODO COMPLETO (código original)
         st.sidebar.header("🔧 Configuración Detallada de la Propiedad")
         
@@ -559,30 +607,30 @@ def main():
         col1, col2 = st.sidebar.columns(2)
         
         with col1:
-            barrio = st.selectbox("📍 Barrio", barrios_disponibles, index=0)
-            tipo = st.selectbox("🏢 Tipo", tipos_disponibles, index=0)
-            m2_total = st.slider("📏 M² Totales", 20, 300, 80)
-            m2_covered = st.slider("🏠 M² Cubiertos", 20, 250, int(m2_total * 0.9))
+            barrio = st.selectbox("📍 Barrio", barrios_disponibles, index=0,  key="completo_barrio")
+            tipo = st.selectbox("🏢 Tipo", tipos_disponibles, index=0, key="completo_tipo")
+            m2_total = st.slider("📏 M² Totales", 20, 300, 80, key="completo_m2_total")
+            m2_covered = st.slider("🏠 M² Cubiertos", 20, 250, int(m2_total * 0.9), key="completo_m2_covered")
         
         with col2:
-            orientacion = st.selectbox("🧭 Orientación", orientaciones_disponibles, index=0)
-            disposicion = st.selectbox("🚪 Disposición", disposiciones_disponibles, index=0)
-            ambientes = st.slider("🛋️ Ambientes", 1, 6, 3)
-            dormitorios = st.slider("🛏️ Dormitorios", 1, 5, 2)
+            orientacion = st.selectbox("🧭 Orientación", orientaciones_disponibles, index=0,  key="completo_orientacion")
+            disposicion = st.selectbox("🚪 Disposición", disposiciones_disponibles, index=0,  key="completo_disposicion")
+            ambientes = st.slider("🛋️ Ambientes", 1, 6, 3,  key="completo_ambientes")
+            dormitorios = st.slider("🛏️ Dormitorios", 1, 5, 2,  key="completo_dormitorios")
         
         # Más filtros
         st.sidebar.markdown("---")
         col3, col4 = st.sidebar.columns(2)
         
         with col3:
-            baños = st.slider("🚿 Baños", 1, 4, 1)
-            toilettes = st.slider("🚽 Toilettes", 0, 2, 0)
+            baños = st.slider("🚿 Baños", 1, 4, 1, key="completo_baños")
+            toilettes = st.slider("🚽 Toilettes", 0, 2, 0, key="completo_toilettes")
         
         with col4:
-            antiguedad = st.slider("📅 Antigüedad (años)", 0, 100, 20)
-            cocheras = st.slider("🚗 Cocheras", 0, 3, 0)
+            antiguedad = st.slider("📅 Antigüedad (años)", 0, 100, 20, key="completo_antiguedad")
+            cocheras = st.slider("🚗 Cocheras", 0, 3, 0, key="completo_cocheras")
         
-        expensas = st.sidebar.slider("💰 Expensas (USD)", 0, 1000, 100)
+        expensas = st.sidebar.slider("💰 Expensas (USD)", 0, 1000, 100, key="completo_expensas")
         
         # Botón de predicción
         if st.sidebar.button("🔮 Predecir Precio", type="primary"):
@@ -718,7 +766,6 @@ def main():
             
             except Exception as e:
                 st.error(f"Error en la predicción: {str(e)}")
-
             
     # Información adicional
     with st.expander("ℹ️ Información sobre el Modelo"):
