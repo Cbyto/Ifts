@@ -1,4 +1,6 @@
 import py5
+import tkinter as tk
+from tkinter import messagebox
 
 '''
 Con la librería py5 realizar una pizarra tipo el "Paint" de Windows.
@@ -349,10 +351,29 @@ def handle_toolbar_click(mx, my):
             state["color"] = col
             return
 
+    def mostrar_ayuda():
+        root = tk.Tk()
+        root.withdraw()   # oculta la ventana principal de tkinter
+        messagebox.showinfo("Ayuda - Pizarra Paint", (
+            "🖊  LÁPIZ         — Dibujá libremente arrastrando el mouse\n"
+            "⬜  CUADRADO     — Click y arrastrá para definir el tamaño\n"
+            "⭕  CÍRCULO       — Igual que cuadrado, proporciones 1:1\n"
+            "〇  ELIPSE        — Click y arrastrá en cualquier proporción\n"
+            "🧹  GOMA          — Borrá lo que pasás por encima\n\n"
+            "🎨  COLOR          — Hacé click en cualquier color de la paleta\n"
+            "🔲  CONTORNO     — La figura se dibuja solo con borde\n"
+            "⬛  RELLENO       — La figura se dibuja rellena de color\n\n"
+            "🖱  SCROLL         — Cambia el grosor del lápiz o la goma\n"
+            "⌨  Tecla C         — Limpia el canvas completo"
+        ))
+        root.destroy()
+
     # Botón Ayuda
     if 10 <= mx <= 145 and 38 <= my <= 64:
-        print("Acá iría una ayuda")   
-
+        # print("Acá iría una ayuda")   
+        mostrar_ayuda()
+    
+    
 # ─── Scroll → cambiar tamaño de pincel 
 def mouse_wheel(event):
     # get_count() > 0 significa scroll hacia abajo (achica), < 0 hacia arriba (agranda)
