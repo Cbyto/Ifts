@@ -1,6 +1,6 @@
 # 🎨 Pizarra Tipo Paint — py5
 
-Aplicación de dibujo estilo Paint desarrollada en Python con la librería **py5**, como trabajo práctico de la materia ** Laboratorio de Procesamiento de Imágenes Digitales**.
+Aplicación de dibujo estilo Paint desarrollada en Python con la librería **py5**, como trabajo práctico de la materia **Laboratorio de Procesamiento de Imágenes Digitales**.
 
 ---
 
@@ -15,6 +15,7 @@ Aplicación de dibujo estilo Paint desarrollada en Python con la librería **py5
 - 🔲 Modo **Contorno** o **Relleno** para las figuras
 - **Scroll del mouse** para cambiar el tamaño del pincel / goma
 - Tecla **`C`** para limpiar el canvas
+- Agregado: **Ventana de Ayuda**
 
 ---
 
