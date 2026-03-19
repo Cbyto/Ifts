@@ -1,6 +1,4 @@
 import py5
-import tkinter as tk
-from tkinter import messagebox
 
 '''
 Con la librería py5 realizar una pizarra tipo el "Paint" de Windows.
@@ -9,7 +7,7 @@ Con la librería py5 realizar una pizarra tipo el "Paint" de Windows.
 # ─── Configuración general 
 CANVAS_W, CANVAS_H = 800, 600
 TOOLBAR_H = 70                  # altura de la barra superior
-DRAW_Y = TOOLBAR_H              # lo que este por debajo de sta Y es el área de dibujo
+DRAW_Y = TOOLBAR_H              # lo que este por debajo de esta Y es el área de dibujo
 
 # ─── Estado de la aplicación
 # Diccionario que guarda la herramienta activa, color, modo de relleno
@@ -25,6 +23,7 @@ state = {
     "start_y": 0,               # coordenada Y donde se presionó el mouse
     "prev_x": 0,                # posición anterior del mouse (se necesita para trazar líneas continuas)
     "prev_y": 0,
+    "show_help": False,
 }
 
 # Paleta de colores disponibles
@@ -62,6 +61,13 @@ FILL_BUTTONS = [
 # Gráficos off-screen para conservar lo dibujado
 canvas_pg = None            # buffer off-screen (PGraphics): guarda de forma permanente
 
+# Coordenadas de la X del overlay (constantes para reutilizar en el hit-test)
+HELP_X      = 60            # borde izquierdo del panel de ayuda
+HELP_Y      = 80            # borde superior del panel de ayuda
+CLOSE_X     = 520           # borde izquierdo del botón X
+CLOSE_Y     = 85            # borde superior del botón X
+CLOSE_SIZE  = 22            # ancho y alto del botón X
+
 
 # ─── Setup 
 def setup():
@@ -73,6 +79,7 @@ def setup():
     canvas_pg.begin_draw()
     canvas_pg.background(255)       # fondo blanco inicial
     canvas_pg.end_draw()
+
 
 # ─── Draw
 def draw():
@@ -86,6 +93,9 @@ def draw():
     # un preview "fantasma" en tiempo real (no se graba en canvas_pg todavía)
     if state["drawing"] and state["tool"] in ("cuadrado", "circulo", "elipse"):
         draw_preview()
+
+    if state["show_help"]:
+        draw_help_overlay()
 
 
 # ─── Toolbar
@@ -106,11 +116,11 @@ def draw_toolbar():
         active = fig_active and state["fill_mode"] == btn["id"]
         draw_button(btn["x"], 8, 82, 26, btn["label"], active, dim=not fig_active)
 
-    # Paleta de colores
+    # Dibuja los cuadraditos de color de la paleta en una grilla de 6 columnas
     px = 620
     for i, col in enumerate(PALETTE):
-        cx = px + (i % 6) * 24
-        cy = 8 + (i // 6) * 24
+        cx = px + (i % 6) * 24   # columna
+        cy = 8 + (i // 6) * 24   # fila
         py5.stroke(180)
         py5.stroke_weight(1)
         # Resalta con borde amarillo el color actualmente seleccionado
@@ -134,8 +144,8 @@ def draw_toolbar():
     py5.stroke_weight(1)
     py5.line(0, TOOLBAR_H, CANVAS_W, TOOLBAR_H)
 
-    # Botón Ayuda — debajo de Lápiz y Goma, del mismo ancho combinado ambos
-    draw_button_green(10, 38, 135, 26, "Ayuda")
+    # Botón Ayuda — debajo de Lápiz y Goma, del mismo ancho combinado
+    draw_button_green(10, 38, 135, 26, "? Ayuda")
 
 
 def draw_button(x, y, w, h, label, active, dim=False):
@@ -198,7 +208,7 @@ def draw_preview():
         d = min(abs(mx - sx), abs(my - sy))
         sign_x = 1 if mx >= sx else -1
         sign_y = 1 if my >= sy else -1
-        # Ellipse() toma el centro y los diámetros (no la esquina como los dema's)
+        # ellipse() toma el CENTRO y los diámetros (no la esquina como los dema's)
         py5.ellipse(sx + sign_x * d / 2, sy + sign_y * d / 2, d, d)
     elif state["tool"] == "elipse":
         # Centro = punto medio entre origen y posición actual del mouse
@@ -207,11 +217,78 @@ def draw_preview():
     py5.pop_style()
 
 
+# ─── Overlay de ayuda
+def draw_help_overlay():
+    # push_style / pop_style para que los estilos del overlay no afecten al resto
+    py5.push_style()
+
+    # Fondo semi-transparente oscuro
+    py5.no_stroke()
+    py5.fill(20, 20, 20, 210)
+    py5.rect(HELP_X, HELP_Y, 500, 320, 10)
+
+    # ── Botón X para cerrar (se dibuja primero para que quede debajo del título) ──
+    py5.fill(180, 50, 50)
+    py5.rect(CLOSE_X, CLOSE_Y, CLOSE_SIZE, CLOSE_SIZE, 4)
+    py5.fill(255)
+    py5.text_size(13)
+    py5.text_align(py5.CENTER, py5.CENTER)
+    py5.text("X", CLOSE_X + CLOSE_SIZE / 2, CLOSE_Y + CLOSE_SIZE / 2)
+
+    # ── Título ──
+    py5.fill(255)
+    py5.text_size(15)
+    py5.text_align(py5.LEFT, py5.TOP)           # alineación izquierda para título y contenido
+    py5.text("Ayuda — Pizarra Paint", HELP_X + 20, HELP_Y + 15)
+
+    # Línea separadora
+    py5.stroke(150)
+    py5.stroke_weight(1)
+    py5.line(HELP_X + 20, HELP_Y + 38, HELP_X + 480, HELP_Y + 38)
+
+    # ── Contenido ──
+    # text_align LEFT evita que el texto quede corrido
+    py5.no_stroke()
+    py5.fill(220)
+    py5.text_size(12)
+    py5.text_align(py5.LEFT, py5.TOP)
+    ayuda = [
+        "Lapiz        — Dibuja libremente arrastrando el mouse",
+        "Goma         — Borra lo que pases por encima",
+        "Cuadrado     — Click y arrastra para definir el tamaño",
+        "Circulo      — Igual que cuadrado, proporciones 1:1",
+        "Elipse       — Click y arrastra en cualquier proporcion",
+        "",
+        "Contorno / Relleno — Solo activos al usar una figura",
+        "Paleta       — Click en cualquier color para seleccionar",
+        "",
+        "Scroll       — Cambia el grosor del lapiz o la goma",
+        "Tecla C      — Limpia el canvas completo",
+        "",
+        "[ Click en '? Ayuda' o en la X para cerrar ]",
+    ]
+    for i, linea in enumerate(ayuda):
+        py5.text(linea, HELP_X + 20, HELP_Y + 50 + i * 20)
+
+    py5.pop_style()
+
+
 # ─── Eventos del mouse
 def mouse_pressed():
     mx, my = py5.mouse_x, py5.mouse_y
 
-    # Si el click fue en la toolbar, lo delegamos al manejador de toolbar
+    # Si la ayuda está abierta, solo procesamos el cierre (X o botón Ayuda)
+    # y bloqueamos cualquier otra acción
+    if state["show_help"]:
+        # Click en la X roja
+        if CLOSE_X <= mx <= CLOSE_X + CLOSE_SIZE and CLOSE_Y <= my <= CLOSE_Y + CLOSE_SIZE:
+            state["show_help"] = False
+        # Click en el botón Ayuda (toggle)
+        elif my < TOOLBAR_H and 10 <= mx <= 145 and 38 <= my <= 64:
+            state["show_help"] = False
+        return                      # bloqueamos el dibujo mientras la ayuda está abierta
+
+    # Click en toolbar → cambiar herramienta o color
     if my < TOOLBAR_H:
         handle_toolbar_click(mx, my)
         return
@@ -225,14 +302,14 @@ def mouse_pressed():
 
     # Para lápiz y goma, el primer click ya debe dejar marca
     if state["tool"] in ("lapiz", "goma"):
-        paint_point(mx, my - DRAW_Y)
+        paint_point(mx, my - DRAW_Y)   
 
 
 def mouse_dragged():
     if not state["drawing"]:
         return
     mx, my = py5.mouse_x, py5.mouse_y
-    if my < DRAW_Y:                     # Evita que dibujemos encima de la toolbar al arrastrar
+    if my < DRAW_Y:                     # evita dibujar encima de la toolbar al arrastrar
         return
 
     if state["tool"] == "lapiz":
@@ -257,6 +334,7 @@ def mouse_released():
         return
 
     tool = state["tool"]
+    # Convertimos coordenadas de ventana a coordenadas del buffer (sin toolbar)
     sx, sy = state["start_x"], state["start_y"] - DRAW_Y
     ex, ey = mx, my - DRAW_Y
 
@@ -273,7 +351,7 @@ def mouse_released():
                        abs(ex - sx), abs(ey - sy))
 
 
-# ─── Helpers de dibujo sobre canvas_pg 
+# ─── Helpers de dibujo sobre canvas_pg
 def paint_point(x, y):
     r, g, b = state["color"]
     canvas_pg.begin_draw()
@@ -284,6 +362,7 @@ def paint_point(x, y):
 
 
 def paint_line(x1, y1, x2, y2):
+    # Dibuja un segmento entre el frame anterior y el actual del mouse
     r, g, b = state["color"]
     canvas_pg.begin_draw()
     canvas_pg.stroke(r, g, b)
@@ -330,7 +409,7 @@ def commit_ellipse(cx, cy, w, h):
 
 # ─── Manejo de clicks en toolbar
 def handle_toolbar_click(mx, my):
-    # Herramientas
+    # Comprueba si el click cayó dentro del área de algún botón (hit-test manual)
     for btn in TOOLS:
         if btn["x"] <= mx <= btn["x"] + 65 and 8 <= my <= 34:
             state["tool"] = btn["id"]
@@ -342,7 +421,7 @@ def handle_toolbar_click(mx, my):
             state["fill_mode"] = btn["id"]
             return
 
-    # Paleta de colores
+    # Mismo hit-test para cada cuadradito de color de la paleta
     px = 620
     for i, col in enumerate(PALETTE):
         cx = px + (i % 6) * 24
@@ -351,30 +430,12 @@ def handle_toolbar_click(mx, my):
             state["color"] = col
             return
 
-    def mostrar_ayuda():
-        root = tk.Tk()
-        root.withdraw()   # oculta la ventana principal de tkinter
-        messagebox.showinfo("Ayuda - Pizarra Paint", (
-            "🖊  LÁPIZ         — Dibujá libremente arrastrando el mouse\n"
-            "⬜  CUADRADO     — Click y arrastrá para definir el tamaño\n"
-            "⭕  CÍRCULO       — Igual que cuadrado, proporciones 1:1\n"
-            "〇  ELIPSE        — Click y arrastrá en cualquier proporción\n"
-            "🧹  GOMA          — Borrá lo que pasás por encima\n\n"
-            "🎨  COLOR          — Hacé click en cualquier color de la paleta\n"
-            "🔲  CONTORNO     — La figura se dibuja solo con borde\n"
-            "⬛  RELLENO       — La figura se dibuja rellena de color\n\n"
-            "🖱  SCROLL         — Cambia el grosor del lápiz o la goma\n"
-            "⌨  Tecla C         — Limpia el canvas completo"
-        ))
-        root.destroy()
-
-    # Botón Ayuda
+    # Botón Ayuda — toggle: abre y cierra
     if 10 <= mx <= 145 and 38 <= my <= 64:
-        # print("Acá iría una ayuda")   
-        mostrar_ayuda()
-    
-    
-# ─── Scroll → cambiar tamaño de pincel 
+        state["show_help"] = not state["show_help"]
+
+
+# ─── Scroll → cambiar tamaño de pincel
 def mouse_wheel(event):
     # get_count() > 0 significa scroll hacia abajo (achica), < 0 hacia arriba (agranda)
     delta = -1 if event.get_count() > 0 else 1
@@ -384,7 +445,7 @@ def mouse_wheel(event):
         state["brush_size"] = max(1, min(30, state["brush_size"] + delta))
 
 
-# ─── Teclado: C limpia el canvas 
+# ─── Teclado: C limpia el canvas
 def key_pressed():
     if py5.key == 'c' or py5.key == 'C':
         # Limpiar = repintar el buffer entero de blanco
