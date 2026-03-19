@@ -1,0 +1,375 @@
+import py5
+
+'''
+Con la librería py5 realizar una pizarra tipo el "Paint" de Windows.
+'''
+
+# ─── Configuración general 
+CANVAS_W, CANVAS_H = 800, 600
+TOOLBAR_H = 70                  # altura de la barra superior
+DRAW_Y = TOOLBAR_H              # lo que este por debajo de sta Y es el área de dibujo
+
+# ─── Estado de la aplicación
+# Diccionario que guarda la herramienta activa, color, modo de relleno
+# y las coordenadas necesarias para saber dónde empezó y dónde va el trazo.
+state = {
+    "tool": "lapiz",            # lapiz | cuadrado | circulo | elipse | goma
+    "color": (0, 0, 0),         # color activo (R, G, B)
+    "fill_mode": "contorno",    # contorno | relleno
+    "brush_size": 4,            # grosor del lápiz en píxeles
+    "eraser_size": 20,          # tamaño del cuadrado borrador en píxeles
+    "drawing": False,           # True mientras el botón del mouse está presionado
+    "start_x": 0,               # coordenada X donde se presionó el mouse (origen de la figura)
+    "start_y": 0,               # coordenada Y donde se presionó el mouse
+    "prev_x": 0,                # posición anterior del mouse (se necesita para trazar líneas continuas)
+    "prev_y": 0,
+}
+
+# Paleta de colores disponibles
+PALETTE = [
+    (0,   0,   0),    # negro
+    (255, 255, 255),  # blanco
+    (200,  30,  30),  # rojo
+    (220, 120,   0),  # naranja
+    (220, 200,   0),  # amarillo
+    (30,  160,  30),  # verde
+    (0,   100, 210),  # azul
+    (130,  0,  200),  # violeta
+    (200,   0, 150),  # rosa
+    (100, 200, 220),  # celeste
+    (139,  90,  43),  # marrón
+    (160, 160, 160),  # gris
+]
+
+# Definición de botones de herramientas
+# Cada herramienta tiene un id interno y una posición X fija en la toolbar
+TOOLS = [
+    {"id": "lapiz",    "label": "Lapiz",    "x": 10},
+    {"id": "goma",     "label": "Goma",     "x": 80},
+    {"id": "cuadrado", "label": "Cuadrado", "x": 150},
+    {"id": "circulo",  "label": "Circulo",  "x": 240},
+    {"id": "elipse",   "label": "Elipse",   "x": 330},
+]
+
+# Botones relleno / contorno
+FILL_BUTTONS = [
+    {"id": "contorno", "label": "Contorno", "x": 430},
+    {"id": "relleno",  "label": "Relleno",  "x": 520},
+]
+
+# Gráficos off-screen para conservar lo dibujado
+canvas_pg = None            # buffer off-screen (PGraphics): guarda de forma permanente
+
+
+# ─── Setup 
+def setup():
+    global canvas_pg
+    py5.size(CANVAS_W, CANVAS_H)
+    py5.window_title("Pizarra Paint - py5")
+    # Creamos el buffer con el alto descontando la toolbar
+    canvas_pg = py5.create_graphics(CANVAS_W, CANVAS_H - DRAW_Y)
+    canvas_pg.begin_draw()
+    canvas_pg.background(255)       # fondo blanco inicial
+    canvas_pg.end_draw()
+
+# ─── Draw
+def draw():
+    py5.background(230)
+    draw_toolbar()
+
+    # Volcamos el buffer persistente sobre la ventana (en la zona de dibujo)
+    py5.image(canvas_pg, 0, DRAW_Y)
+
+    # Mientras el usuario arrastra para crear una figura, mostramos
+    # un preview "fantasma" en tiempo real (no se graba en canvas_pg todavía)
+    if state["drawing"] and state["tool"] in ("cuadrado", "circulo", "elipse"):
+        draw_preview()
+
+
+# ─── Toolbar
+def draw_toolbar():
+    # Fondo de barra
+    py5.no_stroke()
+    py5.fill(50, 50, 60)
+    py5.rect(0, 0, CANVAS_W, TOOLBAR_H)
+
+    # Dibuja cada botón de herramienta; el activo resaltado en azul
+    for btn in TOOLS:
+        active = state["tool"] == btn["id"]
+        draw_button(btn["x"], 8, 65, 26, btn["label"], active)
+
+    # Botones relleno/contorno (solo activos para figuras sin sentido para lápiz o goma)
+    fig_active = state["tool"] in ("cuadrado", "circulo", "elipse")
+    for btn in FILL_BUTTONS:
+        active = fig_active and state["fill_mode"] == btn["id"]
+        draw_button(btn["x"], 8, 82, 26, btn["label"], active, dim=not fig_active)
+
+    # Paleta de colores
+    px = 620
+    for i, col in enumerate(PALETTE):
+        cx = px + (i % 6) * 24
+        cy = 8 + (i // 6) * 24
+        py5.stroke(180)
+        py5.stroke_weight(1)
+        # Resalta con borde amarillo el color actualmente seleccionado
+        if col == state["color"]:
+            py5.stroke(255, 230, 0)
+            py5.stroke_weight(2)
+        py5.fill(*col)
+        py5.rect(cx, cy, 20, 20, 2)
+
+    # Cuadrado grande al final que muestra el color activo
+    py5.no_stroke()
+    py5.fill(*state["color"])
+    py5.rect(CANVAS_W - 34, 8, 26, 26, 3)
+    py5.stroke(180)
+    py5.stroke_weight(1)
+    py5.no_fill()
+    py5.rect(CANVAS_W - 34, 8, 26, 26, 3)
+
+    # Línea separadora
+    py5.stroke(80, 80, 100)
+    py5.stroke_weight(1)
+    py5.line(0, TOOLBAR_H, CANVAS_W, TOOLBAR_H)
+
+    # Botón Ayuda — debajo de Lápiz y Goma, del mismo ancho combinado ambos
+    draw_button_green(10, 38, 135, 26, "Ayuda")
+
+
+def draw_button(x, y, w, h, label, active, dim=False):
+    # Cambia el color del botón según su estado: activo, atenuado o normal
+    py5.stroke_weight(1)
+    if active:
+        py5.fill(90, 160, 255)
+        py5.stroke(150, 200, 255)
+    elif dim:
+        py5.fill(60, 60, 70)
+        py5.stroke(90, 90, 100)
+    else:
+        py5.fill(75, 80, 95)
+        py5.stroke(110, 115, 130)
+    py5.rect(x, y, w, h, 4)         # el 4 es el radio de las esquinas redondeadas
+
+    py5.no_stroke()
+    if active:
+        py5.fill(255)
+    elif dim:
+        py5.fill(100, 100, 110)
+    else:
+        py5.fill(210)
+    py5.text_size(11)
+    py5.text_align(py5.CENTER, py5.CENTER)
+    py5.text(label, x + w / 2, y + h / 2)
+
+
+def draw_button_green(x, y, w, h, label):
+    py5.stroke_weight(1)
+    py5.fill(40, 140, 70)       # verde oscuro de fondo
+    py5.stroke(80, 200, 110)    # borde verde claro
+    py5.rect(x, y, w, h, 4)
+
+    py5.no_stroke()
+    py5.fill(220, 255, 220)     # texto verde muy claro
+    py5.text_size(11)
+    py5.text_align(py5.CENTER, py5.CENTER)
+    py5.text(label, x + w / 2, y + h / 2)
+
+
+# ─── Preview de figura 
+def draw_preview():
+    mx, my = py5.mouse_x, py5.mouse_y
+    sx, sy = state["start_x"], state["start_y"]
+    r, g, b = state["color"]
+
+    py5.push_style()
+    if state["fill_mode"] == "relleno":
+        py5.fill(r, g, b, 160)          # alpha 160: semi-transparente para el preview
+    else:
+        py5.no_fill()
+    py5.stroke(r, g, b)
+    py5.stroke_weight(2)
+
+    if state["tool"] == "cuadrado":
+        py5.rect(sx, sy, mx - sx, my - sy)
+    elif state["tool"] == "circulo":
+        # Forzamos que ancho == alto tomando el menor de los dos desplazamientos
+        d = min(abs(mx - sx), abs(my - sy))
+        sign_x = 1 if mx >= sx else -1
+        sign_y = 1 if my >= sy else -1
+        # Ellipse() toma el centro y los diámetros (no la esquina como los dema's)
+        py5.ellipse(sx + sign_x * d / 2, sy + sign_y * d / 2, d, d)
+    elif state["tool"] == "elipse":
+        # Centro = punto medio entre origen y posición actual del mouse
+        py5.ellipse(sx + (mx - sx) / 2, sy + (my - sy) / 2,
+                    abs(mx - sx), abs(my - sy))
+    py5.pop_style()
+
+
+# ─── Eventos del mouse
+def mouse_pressed():
+    mx, my = py5.mouse_x, py5.mouse_y
+
+    # Si el click fue en la toolbar, lo delegamos al manejador de toolbar
+    if my < TOOLBAR_H:
+        handle_toolbar_click(mx, my)
+        return
+
+    # Click en área de dibujo
+    state["drawing"] = True
+    state["start_x"] = mx
+    state["start_y"] = my
+    state["prev_x"] = mx
+    state["prev_y"] = my
+
+    # Para lápiz y goma, el primer click ya debe dejar marca
+    if state["tool"] in ("lapiz", "goma"):
+        paint_point(mx, my - DRAW_Y)
+
+
+def mouse_dragged():
+    if not state["drawing"]:
+        return
+    mx, my = py5.mouse_x, py5.mouse_y
+    if my < DRAW_Y:                     # Evita que dibujemos encima de la toolbar al arrastrar
+        return
+
+    if state["tool"] == "lapiz":
+        # Conectamos la posición anterior con la actual para trazar una línea suave
+        # sin esto aparecerían puntos sueltos al mover el mouse rápido
+        paint_line(state["prev_x"], state["prev_y"] - DRAW_Y,
+                   mx, my - DRAW_Y)
+        state["prev_x"], state["prev_y"] = mx, my
+
+    elif state["tool"] == "goma":
+        erase_point(mx, my - DRAW_Y)
+        state["prev_x"], state["prev_y"] = mx, my
+
+
+def mouse_released():
+    if not state["drawing"]:
+        return
+    mx, my = py5.mouse_x, py5.mouse_y
+    state["drawing"] = False
+
+    if my < DRAW_Y:
+        return
+
+    tool = state["tool"]
+    sx, sy = state["start_x"], state["start_y"] - DRAW_Y
+    ex, ey = mx, my - DRAW_Y
+
+    # Al soltar el mouse grabamos la figura definitiva en el buffer persistente
+    if tool == "cuadrado":
+        commit_rect(sx, sy, ex - sx, ey - sy)
+    elif tool == "circulo":
+        d = min(abs(ex - sx), abs(ey - sy))
+        sign_x = 1 if ex >= sx else -1
+        sign_y = 1 if ey >= sy else -1
+        commit_ellipse(sx + sign_x * d / 2, sy + sign_y * d / 2, d, d)
+    elif tool == "elipse":
+        commit_ellipse(sx + (ex - sx) / 2, sy + (ey - sy) / 2,
+                       abs(ex - sx), abs(ey - sy))
+
+
+# ─── Helpers de dibujo sobre canvas_pg 
+def paint_point(x, y):
+    r, g, b = state["color"]
+    canvas_pg.begin_draw()
+    canvas_pg.stroke(r, g, b)
+    canvas_pg.stroke_weight(state["brush_size"])
+    canvas_pg.point(x, y)
+    canvas_pg.end_draw()
+
+
+def paint_line(x1, y1, x2, y2):
+    r, g, b = state["color"]
+    canvas_pg.begin_draw()
+    canvas_pg.stroke(r, g, b)
+    canvas_pg.stroke_weight(state["brush_size"])
+    canvas_pg.line(x1, y1, x2, y2)
+    canvas_pg.end_draw()
+
+
+def erase_point(x, y):
+    # "Borrar" es pintar un rectángulo blanco sobre el buffer
+    sz = state["eraser_size"]
+    canvas_pg.begin_draw()
+    canvas_pg.no_stroke()
+    canvas_pg.fill(255)
+    canvas_pg.rect(x - sz / 2, y - sz / 2, sz, sz)
+    canvas_pg.end_draw()
+
+
+def commit_rect(x, y, w, h):
+    r, g, b = state["color"]
+    canvas_pg.begin_draw()
+    canvas_pg.stroke(r, g, b)
+    canvas_pg.stroke_weight(2)
+    if state["fill_mode"] == "relleno":
+        canvas_pg.fill(r, g, b)
+    else:
+        canvas_pg.no_fill()
+    canvas_pg.rect(x, y, w, h)
+    canvas_pg.end_draw()
+
+
+def commit_ellipse(cx, cy, w, h):
+    r, g, b = state["color"]
+    canvas_pg.begin_draw()
+    canvas_pg.stroke(r, g, b)
+    canvas_pg.stroke_weight(2)
+    if state["fill_mode"] == "relleno":
+        canvas_pg.fill(r, g, b)
+    else:
+        canvas_pg.no_fill()
+    canvas_pg.ellipse(cx, cy, w, h)
+    canvas_pg.end_draw()
+
+
+# ─── Manejo de clicks en toolbar
+def handle_toolbar_click(mx, my):
+    # Herramientas
+    for btn in TOOLS:
+        if btn["x"] <= mx <= btn["x"] + 65 and 8 <= my <= 34:
+            state["tool"] = btn["id"]
+            return
+
+    # Relleno / Contorno
+    for btn in FILL_BUTTONS:
+        if btn["x"] <= mx <= btn["x"] + 82 and 8 <= my <= 34:
+            state["fill_mode"] = btn["id"]
+            return
+
+    # Paleta de colores
+    px = 620
+    for i, col in enumerate(PALETTE):
+        cx = px + (i % 6) * 24
+        cy = 8 + (i // 6) * 24
+        if cx <= mx <= cx + 20 and cy <= my <= cy + 20:
+            state["color"] = col
+            return
+
+    # Botón Ayuda
+    if 10 <= mx <= 145 and 38 <= my <= 64:
+        print("Acá iría una ayuda")   
+
+# ─── Scroll → cambiar tamaño de pincel 
+def mouse_wheel(event):
+    # get_count() > 0 significa scroll hacia abajo (achica), < 0 hacia arriba (agranda)
+    delta = -1 if event.get_count() > 0 else 1
+    if state["tool"] == "goma":
+        state["eraser_size"] = max(5, min(80, state["eraser_size"] + delta * 3))
+    elif state["tool"] == "lapiz":
+        state["brush_size"] = max(1, min(30, state["brush_size"] + delta))
+
+
+# ─── Teclado: C limpia el canvas 
+def key_pressed():
+    if py5.key == 'c' or py5.key == 'C':
+        # Limpiar = repintar el buffer entero de blanco
+        canvas_pg.begin_draw()
+        canvas_pg.background(255)
+        canvas_pg.end_draw()
+
+
+py5.run_sketch()
